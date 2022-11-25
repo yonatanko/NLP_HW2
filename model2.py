@@ -2,14 +2,13 @@ import gensim
 from gensim import downloader
 import numpy as np
 from gensim.models import Word2Vec
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import f1_score
-
-model = downloader.load('glove-wiki-gigaword-100')
-
+from torch.optim import Adam
+import FFnn
 
 def load_data(file_path):
-    with open(file_path, 'r', encoding='utf-8-sig') as f:
+
+    with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
     sentences = []
@@ -20,7 +19,7 @@ def load_data(file_path):
     word_to_label = {}
 
     for line in lines:
-        if line == '\t\n':
+        if line == '\n':
             sentences.append(sentence)
             all_tags.append(sentence_tags)
             sentence = []
@@ -38,13 +37,13 @@ def load_data(file_path):
     return sentences, all_tags, words, word_to_label
 
 
-def build_set(words, model, word_to_label):
+def build_set(words, model, word_to_label, length):
     train_set = []
     train_tags = []
     not_appeared_positive = []
     not_appeared_negative = []
-    avg_positive_vec = np.zeros(100)
-    avg_negative_vec = np.zeros(100)
+    avg_positive_vec = np.zeros(length)
+    avg_negative_vec = np.zeros(length)
     num_known_positive = 0
     num_known_negative = 0
     for word in words:
@@ -76,35 +75,30 @@ def build_set(words, model, word_to_label):
     return train_set, train_tags
 
 
-def main():
+def train_and_predict(model, k, length):
     # Load training data
     sentences, all_tags, words, word_to_label = load_data('train.tagged')
     train_all_words = set(words)
+    train_set, train_tags = build_set(train_all_words, model, word_to_label, length)
 
-    # define word2vec model
-    # model = Word2Vec(sentences=sentences, vector_size=10, window=2, min_count=1, workers=4)
-    # model = downloader.load('word2vec-google-news-300')
-    # model = model.sv
-
-    # generate train set
-    train_set, train_tags = build_set(train_all_words, model, word_to_label)
-    # train knn
-    knn = KNeighborsClassifier(n_neighbors=5)
-    knn.fit(train_set, train_tags)
-
-    # load test data
+    # Load test data
     test_sentences, test_tags, test_words, test_word_to_label = load_data('dev.tagged')
     test_all_words = set(test_words)
+    test_set, test_tags = build_set(test_all_words, model, test_word_to_label, length)
 
-    # generate test set
-    test_set, test_tags = build_set(test_all_words, model, test_word_to_label)
+    datasets = {'train': (train_set, train_tags), 'test': (test_set, test_tags)}
+    # train model with FF neural network
 
     # predict
-    predictions = knn.predict(test_set)
+    predictions = 0
 
     # calculate F1 score
     f1_score_value = f1_score(test_tags, predictions, average='binary', pos_label='1')
     print(f"f1 score: {f1_score_value}")
+
+
+def main():
+    pass
 
 
 if __name__ == '__main__':
