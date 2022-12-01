@@ -40,39 +40,15 @@ def load_data(file_path):
 def build_set(words, model, word_to_label, length):
     set_data = []
     set_tags = []
-    not_appeared_positive = []
-    not_appeared_negative = []
-    avg_positive_vec = np.zeros(length)
-    avg_negative_vec = np.zeros(length)
-    num_known_positive = 0
-    num_known_negative = 0
+
     for word in words:
         if word not in model.key_to_index:
-            if word_to_label[word] == '1':
-                not_appeared_positive.append(word)
-            else:
-                not_appeared_negative.append(word)
+            word_vec = np.zeros(length)
         else:
             word_vec = model[word]
 
-            if word_to_label[word] == '1':
-                num_known_positive += 1
-                avg_positive_vec = [sum(x) for x in zip(avg_positive_vec, word_vec)]
-            else:
-                num_known_negative += 1
-                avg_negative_vec = [sum(x) for x in zip(avg_negative_vec, word_vec)]
-
-            set_data.append(word_vec)
-            set_tags.append(word_to_label[word])
-
-    for word in not_appeared_positive:
-        set_data.append([x / num_known_positive for x in avg_positive_vec])
-        set_tags.append('1')
-
-    # this is the part I dropped yesterday, and it increased the F1 score
-    for word in not_appeared_negative:
-        set_data.append([x / num_known_negative for x in avg_negative_vec])
-        set_tags.append('0')
+        set_data.append(word_vec)
+        set_tags.append(word_to_label[word])
 
     return set_data, set_tags
 
@@ -141,11 +117,12 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                 for k, v in batch.items():
                     batch[k] = v.to(device)
                     batch_size = v.shape[0]
-                optimizer.zero_grad()
+
                 if phase == "train":
                     outputs, loss = model(**batch)
                     loss.backward()
                     optimizer.step()
+                    optimizer.zero_grad()
                 else:
                     with torch.no_grad():
                         outputs, loss = model(**batch)
@@ -154,6 +131,7 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                 labels += batch["labels"].cpu().view(-1).tolist()
                 preds += pred.view(-1).tolist()
                 running_loss += loss.item() * batch_size
+
 
             epoch_loss = running_loss / len(data_sets[phase])
             epoch_f1 = f1_score(labels, preds)
