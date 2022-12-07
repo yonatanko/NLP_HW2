@@ -5,7 +5,8 @@ from sklearn.metrics import f1_score, accuracy_score
 from gensim import downloader
 import numpy as np
 import re
-from torch.optim import Adam, Adagrad
+from torch.optim import Adam
+
 
 def load_data(file_path):
     with open(file_path, 'r', encoding='utf-8-sig') as f:
@@ -27,7 +28,6 @@ def load_data(file_path):
         else:
             if len(line.split('\t')) > 1:
                 word, tag = line.split('\t')
-                word = word.lower()
                 tag = "0" if tag[:-1] == "O" else "1"
                 sentence.append(word)
                 sentence_tags.append(tag)
@@ -60,7 +60,7 @@ def build_set(words, model1,model2, word_to_label, length):
 
 
 class NerNN(nn.Module):
-    def __init__(self, vec_dim, num_classes, hidden_dim=100):
+    def __init__(self, vec_dim, num_classes, hidden_dim=300):
         super(NerNN, self).__init__()
         self.first_layer = nn.Linear(vec_dim, hidden_dim)
         self.second_layer = nn.Linear(hidden_dim, hidden_dim)
@@ -103,7 +103,7 @@ class NerDataset(torch.utils.data.Dataset):
         return {"input_ids": cur_sen, "labels": label}
 
 
-def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
+def train(model, data_sets, optimizer, num_epochs: int, batch_size=50):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data_loaders = {"train": DataLoader(data_sets["train"], batch_size=batch_size, shuffle=True, num_workers=4),
                     "dev": DataLoader(data_sets["dev"], batch_size=batch_size, shuffle=False, num_workers=4)}
@@ -142,11 +142,9 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
                 preds += pred.view(-1).tolist()
                 running_loss += loss.item() * batch_size
 
-            epoch_loss = running_loss / len(data_sets[phase])
             epoch_f1 = f1_score(labels, preds)
-            epoch_accuracy = accuracy_score(labels, preds)
 
-            print(f"{phase} Loss: {epoch_loss}, F1: {epoch_f1}, accuracy: {epoch_accuracy}")
+            print(f"{phase} F1: {epoch_f1}")
 
             # update max f1 score
             if phase == "dev" and epoch_f1 > max_f1:
@@ -160,14 +158,14 @@ def train(model, data_sets, optimizer, num_epochs: int, batch_size=16):
 
 def main():
     model2 = downloader.load('word2vec-google-news-300')
-    for model_name in ['glove-twitter-25', 'glove-twitter-50', 'glove-twitter-100', 'glove-twitter-200','word2vec-google-news-300']:
+    for model_name in ['glove-twitter-25', 'glove-twitter-50', 'glove-twitter-100', 'glove-twitter-200']:
         model1 = downloader.load(model_name)
         model2_name = 'word2vec-google-news-300'
         print(f"glove Model: {model_name}, word2vec Model: {model2_name}")
         train_set = NerDataset("train.tagged", None, model1, model2, model_name, model2_name)
         test_set = NerDataset("dev.tagged", None, model1, model2, model_name, model2_name)
         nn_model = NerNN(num_classes=2, vec_dim=train_set.vector_dim)
-        optimizer = Adagrad(params=nn_model.parameters())
+        optimizer = Adam(params=nn_model.parameters())
         datasets = {"train": train_set, "dev": test_set}
         train(model=nn_model, data_sets=datasets, optimizer=optimizer, num_epochs=7)
         print()
