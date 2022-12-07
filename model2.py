@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score
 from gensim import downloader
 import numpy as np
 import re
@@ -20,19 +20,19 @@ def load_data(file_path):
     word_to_label = {}
 
     for line in lines:
-        if line == '\n':
+        line = re.sub(r'\ufeff', '', line)
+        if line == '\t\n' or line == '\n':
             sentences.append(sentence)
             all_tags.append(sentence_tags)
             sentence = []
             sentence_tags = []
         else:
-            if len(line.split('\t')) > 1:
-                word, tag = line.split('\t')
-                tag = "0" if tag[:-1] == "O" else "1"
-                sentence.append(word)
-                sentence_tags.append(tag)
-                words.append(word)
-                word_to_label[word] = tag
+            word, tag = line.split('\t')
+            tag = "0" if tag[:-1] == "O" else "1"
+            sentence.append(word)
+            sentence_tags.append(tag)
+            words.append(word)
+            word_to_label[word] = tag
 
     return sentences, all_tags, words, word_to_label
 
@@ -77,12 +77,13 @@ class NerNN(nn.Module):
 
         if labels is None:
             return x, None
+
         loss = self.loss(x, labels)
         return x, loss
 
 
 class NerDataset(torch.utils.data.Dataset):
-    def __init__(self, file_path, tokenizer, model1, model2, model1_name, model2_name):
+    def __init__(self, file_path, model1, model2, model1_name, model2_name):
         self.file_path = file_path
         self.sentences, _, words, word_to_label = load_data(file_path)
         # flatten the list of lists
@@ -162,8 +163,8 @@ def main():
         model1 = downloader.load(model_name)
         model2_name = 'word2vec-google-news-300'
         print(f"glove Model: {model_name}, word2vec Model: {model2_name}")
-        train_set = NerDataset("train.tagged", None, model1, model2, model_name, model2_name)
-        test_set = NerDataset("dev.tagged", None, model1, model2, model_name, model2_name)
+        train_set, model2 = NerDataset("train.tagged", model1, model2, model_name, model2_name)
+        test_set = NerDataset("dev.tagged", model1, model2, model_name, model2_name)
         nn_model = NerNN(num_classes=2, vec_dim=train_set.vector_dim)
         optimizer = Adam(params=nn_model.parameters())
         datasets = {"train": train_set, "dev": test_set}
